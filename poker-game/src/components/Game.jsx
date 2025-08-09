@@ -17,30 +17,73 @@ const Game = () => {
     setGameState(game.getState());
   }, [game]);
 
+  const processAITurns = useCallback(async () => {
+    // Keep processing while it's AI's turn
+    let iterations = 0;
+    const maxIterations = 10; // Safety limit
+    
+    while (iterations < maxIterations) {
+      const currentState = game.getState();
+      
+      // Check if AI should act
+      if (currentState.isPlayerTurn || 
+          currentState.phase === GAME_PHASES.SHOWDOWN || 
+          currentState.phase === GAME_PHASES.WAITING ||
+          currentState.player.hasFolded || 
+          currentState.opponent.hasFolded) {
+        break;
+      }
+      
+      // AI makes decision
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Delay for realism
+      const aiDecision = await ai.getDecision(currentState);
+      const actionSuccess = game.handlePlayerAction(aiDecision.action, aiDecision.amount);
+      
+      if (!actionSuccess) {
+        console.error('AI action failed');
+        break;
+      }
+      
+      updateGameState();
+      iterations++;
+      
+      // Check if the phase changed (betting round completed)
+      const newState = game.getState();
+      if (newState.phase !== currentState.phase) {
+        // Phase changed, AI might need to act first in new round
+        // Continue the loop to check
+        continue;
+      }
+      
+      // If it's now player's turn, stop
+      if (newState.isPlayerTurn) {
+        break;
+      }
+    }
+  }, [game, ai, updateGameState]);
+
   const handlePlayerAction = useCallback(async (action, amount) => {
     if (isProcessing || !gameState.isPlayerTurn) return;
     
     setIsProcessing(true);
     
-    if (game.handlePlayerAction(action, amount)) {
-      updateGameState();
+    try {
+      const actionSuccess = game.handlePlayerAction(action, amount);
       
-      if (game.phase !== GAME_PHASES.SHOWDOWN && !game.player.hasFolded) {
-        setTimeout(async () => {
-          const aiDecision = await ai.getDecision(game.getState());
-          game.handlePlayerAction(aiDecision.action, aiDecision.amount);
-          updateGameState();
-          setIsProcessing(false);
-        }, 500);
-      } else {
-        setIsProcessing(false);
+      if (actionSuccess) {
+        updateGameState();
+        
+        // Process any AI turns that need to happen
+        await processAITurns();
       }
-    } else {
+    } catch (error) {
+      console.error('Error in handlePlayerAction:', error);
+    } finally {
       setIsProcessing(false);
     }
-  }, [game, ai, gameState.isPlayerTurn, isProcessing, updateGameState]);
+  }, [game, gameState.isPlayerTurn, isProcessing, updateGameState, processAITurns]);
 
-  const startNewHand = useCallback(() => {
+  const startNewHand = useCallback(async () => {
     if (game.isGameOver()) {
       setMessage(
         game.player.chips === 0 
@@ -50,18 +93,18 @@ const Game = () => {
       return;
     }
     
+    setIsProcessing(true);
     game.startNewHand();
     updateGameState();
     setMessage('New hand dealt!');
     
-    if (!game.getState().isPlayerTurn) {
-      setTimeout(async () => {
-        const aiDecision = await ai.getDecision(game.getState());
-        game.handlePlayerAction(aiDecision.action, aiDecision.amount);
-        updateGameState();
-      }, 1500);
+    try {
+      // If AI needs to act first, process their turns
+      await processAITurns();
+    } finally {
+      setIsProcessing(false);
     }
-  }, [game, ai, updateGameState]);
+  }, [game, updateGameState, processAITurns]);
 
   const resetGame = useCallback(() => {
     game.reset();
@@ -151,7 +194,7 @@ const Game = () => {
                 disabled={!gameState.isPlayerTurn || isProcessing}
                 currentBet={gameState.currentBet}
                 playerChips={gameState.player.chips}
-                minRaise={BIG_BLIND}
+                minRaise={gameState.currentBet + BIG_BLIND}
               />
             )}
 

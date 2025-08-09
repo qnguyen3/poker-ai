@@ -11,16 +11,25 @@ const GameControls = ({
 }) => {
   const [raiseAmount, setRaiseAmount] = useState(minRaise);
 
+  // Update raise amount when minRaise changes
+  React.useEffect(() => {
+    setRaiseAmount(minRaise);
+  }, [minRaise]);
+
   const handleRaise = () => {
     const amount = parseInt(raiseAmount);
-    if (amount >= minRaise && amount <= playerChips) {
+    const totalChips = playerChips + (gameState?.player?.currentBet || 0);
+    if (amount >= minRaise && amount <= totalChips) {
       onAction(PLAYER_ACTIONS.RAISE, amount);
       setRaiseAmount(minRaise);
     }
   };
 
-  const canCheck = currentBet === 0 || gameState?.player?.currentBet === currentBet;
-  const callAmount = currentBet - (gameState?.player?.currentBet || 0);
+  const playerCurrentBet = gameState?.player?.currentBet || 0;
+  const totalAvailable = playerChips + playerCurrentBet;
+  
+  const canCheck = currentBet === 0 || playerCurrentBet === currentBet;
+  const callAmount = currentBet - playerCurrentBet;
   const canCall = callAmount > 0 && callAmount <= playerChips;
   const canRaise = playerChips > callAmount;
 
@@ -70,7 +79,7 @@ const GameControls = ({
             <input
               type="range"
               min={minRaise}
-              max={playerChips}
+              max={totalAvailable}
               value={raiseAmount}
               onChange={(e) => setRaiseAmount(e.target.value)}
               disabled={disabled}
@@ -79,7 +88,7 @@ const GameControls = ({
             <input
               type="number"
               min={minRaise}
-              max={playerChips}
+              max={totalAvailable}
               value={raiseAmount}
               onChange={(e) => setRaiseAmount(e.target.value)}
               disabled={disabled}
@@ -87,7 +96,7 @@ const GameControls = ({
             />
             <button
               onClick={handleRaise}
-              disabled={disabled || raiseAmount < minRaise || raiseAmount > playerChips}
+              disabled={disabled || raiseAmount < minRaise || raiseAmount > totalAvailable}
               className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Raise to ${raiseAmount}

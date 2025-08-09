@@ -225,7 +225,11 @@ class GameState {
         break;
         
       case PLAYER_ACTIONS.RAISE:
-        if (amount < MIN_RAISE || amount > currentPlayer.chips) {
+        // Minimum raise: must raise by at least MIN_RAISE (big blind) amount
+        const minRaiseTotal = this.currentBet + MIN_RAISE;
+        
+        // Check if the raise is valid
+        if (amount < minRaiseTotal || amount > currentPlayer.chips + currentPlayer.currentBet) {
           return false;
         }
         
@@ -285,16 +289,42 @@ class GameState {
   }
 
   isBettingRoundComplete() {
+    // If someone folded, betting is complete
     if (this.player.hasFolded || this.opponent.hasFolded) {
       return true;
     }
     
-    const playersActed = this.roundActions.length >= 2;
-    const betsEqual = this.player.currentBet === this.opponent.currentBet;
-    const bothChecked = this.roundActions.length >= 2 && 
-                        this.roundActions.every(a => a.action === PLAYER_ACTIONS.CHECK);
+    // If both players are all-in, betting is complete
+    if (this.player.isAllIn && this.opponent.isAllIn) {
+      return true;
+    }
     
-    return playersActed && (betsEqual || bothChecked);
+    // If one player is all-in and the other has matched or exceeded their bet
+    if (this.player.isAllIn && this.opponent.currentBet >= this.player.currentBet) {
+      return this.roundActions.length >= 2;
+    }
+    if (this.opponent.isAllIn && this.player.currentBet >= this.opponent.currentBet) {
+      return this.roundActions.length >= 2;
+    }
+    
+    // Both players must have acted at least once
+    if (this.roundActions.length < 2) {
+      return false;
+    }
+    
+    // Check if bets are equal
+    const betsEqual = this.player.currentBet === this.opponent.currentBet;
+    
+    // If bets are equal, check if the last action was a call or check (not a raise)
+    if (betsEqual) {
+      const lastAction = this.roundActions[this.roundActions.length - 1];
+      // Round is complete if the last action wasn't a raise that just equalized the bets
+      return lastAction.action === PLAYER_ACTIONS.CHECK || 
+             lastAction.action === PLAYER_ACTIONS.CALL ||
+             lastAction.action === PLAYER_ACTIONS.FOLD;
+    }
+    
+    return false;
   }
 
   progressToNextPhase() {
